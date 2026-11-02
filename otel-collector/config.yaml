@@ -1,0 +1,73 @@
+extensions:
+  file_storage:
+    directory: /var/lib/otelcol/file_storage
+    create_directory: true
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+  filelog:
+    include: [/var/lib/docker/containers/*/*-json.log]
+    # Applies only on the first start; afterwards reading resumes from file_storage offsets.
+    start_at: end
+    storage: file_storage
+    operators:
+      - type: container
+        format: docker
+        # Keep false: this parses Kubernetes log paths, Docker paths hold only the container ID.
+        add_metadata_from_filepath: false
+      # Containers without the `tag` log option are dropped; set it to ship their logs.
+      - type: filter
+        expr: 'attributes.attrs?.tag == nil'
+      - type: move
+        from: attributes.attrs.tag
+        to: resource["service.name"]
+      - type: remove
+        field: attributes.attrs
+
+  docker_stats:
+    collection_interval: 30s
+
+processors:
+  batch: {}
+
+exporters:
+  otlp_http/loki:
+    endpoint: http://loki:3100/otlp
+    sending_queue:
+      storage: file_storage
+    retry_on_failure:
+      max_elapsed_time: 30m
+
+  otlp_http/prometheus:
+    endpoint: http://prometheus:9090/api/v1/otlp
+    sending_queue:
+      storage: file_storage
+    retry_on_failure:
+      max_elapsed_time: 30m
+
+service:
+  extensions: [file_storage]
+
+  telemetry:
+    metrics:
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+
+  pipelines:
+    logs:
+      receivers: [filelog]
+      processors: [batch]
+      exporters: [otlp_http/loki]
+
+    metrics:
+      receivers: [otlp, docker_stats]
+      processors: [batch]
+      exporters: [otlp_http/prometheus]

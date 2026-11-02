@@ -1,0 +1,152 @@
+{
+  "uid": "clarifin",
+  "title": "Clarifin",
+  "description": "Filing uploads, backend latency, container resources and backend errors.",
+  "schemaVersion": 41,
+  "time": { "from": "now-6h", "to": "now" },
+  "refresh": "1m",
+  "tags": ["clarifin"],
+  "panels": [
+    {
+      "type": "row",
+      "title": "Filing uploads (POST /v1/filings)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "Uploads in the selected time range, by status",
+      "description": "201 new filing, 200 duplicate, 4xx rejected upload, 503 database unavailable, 500 bug. Each backend process has its own series, so a series that starts inside the range counts from zero instead of being dropped as increase() would.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "instant": true,
+          "range": false,
+          "legendFormat": "{{http_response_status_code}}",
+          "expr": "sum by (http_response_status_code) (last_over_time(http_server_request_duration_seconds_count{job=\"clarifin-backend\", http_route=\"/v1/filings\"}[$__range]) - (http_server_request_duration_seconds_count{job=\"clarifin-backend\", http_route=\"/v1/filings\"} offset $__range or last_over_time(http_server_request_duration_seconds_count{job=\"clarifin-backend\", http_route=\"/v1/filings\"}[$__range]) * 0))"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "orientation": "horizontal"
+      },
+      "fieldConfig": {
+        "defaults": { "unit": "none", "decimals": 0, "color": { "mode": "fixed", "fixedColor": "blue" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "201" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] },
+          { "matcher": { "id": "byRegexp", "options": "4.." }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }] },
+          { "matcher": { "id": "byRegexp", "options": "5.." }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }] }
+        ]
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Uploads per 5 minutes, by status",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 7 },
+      "interval": "5m",
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{http_response_status_code}}",
+          "expr": "sum by (http_response_status_code) (last_over_time(http_server_request_duration_seconds_count{job=\"clarifin-backend\", http_route=\"/v1/filings\"}[$__interval]) - (http_server_request_duration_seconds_count{job=\"clarifin-backend\", http_route=\"/v1/filings\"} offset $__interval or last_over_time(http_server_request_duration_seconds_count{job=\"clarifin-backend\", http_route=\"/v1/filings\"}[$__interval]) * 0)) > 0"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "custom": { "drawStyle": "bars", "fillOpacity": 80, "stacking": { "mode": "normal" } },
+          "color": { "mode": "fixed", "fixedColor": "blue" }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "201" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }] },
+          { "matcher": { "id": "byRegexp", "options": "4.." }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }] },
+          { "matcher": { "id": "byRegexp", "options": "5.." }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }] }
+        ]
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Upload duration (p50 and p95)",
+      "description": "p95: 95% of uploads finished faster than this line.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 7 },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "p50",
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(http_server_request_duration_seconds_bucket{job=\"clarifin-backend\", http_route=\"/v1/filings\"}[$__rate_interval])))"
+        },
+        {
+          "refId": "B",
+          "legendFormat": "p95",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{job=\"clarifin-backend\", http_route=\"/v1/filings\"}[$__rate_interval])))"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "showPoints": "always", "pointSize": 6 } }, "overrides": [] }
+    },
+    {
+      "type": "row",
+      "title": "Containers",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 15 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "CPU",
+      "description": "100% is one full core.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{container_name}}",
+          "expr": "max by (container_name) (container_cpu_utilization_ratio{container_name=~\"clarifin-(backend|db|nginx.*)\"})"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percent" }, "overrides": [] }
+    },
+    {
+      "type": "timeseries",
+      "title": "Memory",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        {
+          "refId": "A",
+          "legendFormat": "{{container_name}}",
+          "expr": "max by (container_name) (container_memory_usage_total_bytes{container_name=~\"clarifin-(backend|db|nginx.*)\"})"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] }
+    },
+    {
+      "type": "row",
+      "title": "Backend problems",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "logs",
+      "title": "Failed requests and backend errors",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 25 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{service_name=\"clarifin-backend\"} | json | status_code >= 400 or level=~\"WARNING|ERROR|CRITICAL\""
+        }
+      ],
+      "options": { "showTime": true, "wrapLogMessage": true, "sortOrder": "Descending" }
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+apiVersion: 1
+
+providers:
+  - name: clarifin
+    type: file
+    # UI edits are lost on restart; edit the JSON file instead.
+    allowUiUpdates: false
+    options:
+      path: /etc/grafana/provisioning/dashboards/json
