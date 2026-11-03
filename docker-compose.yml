@@ -5,13 +5,10 @@ services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.146.1
     restart: unless-stopped
-    # Root is needed for Docker's logs and socket. The socket is root-equivalent on the
-    # host: never expose this container beyond localhost.
     user: "0"
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
 
     ports:
-      # Only needed when the backend runs on the host; containers use the network.
       - "127.0.0.1:4318:4318"
 
     volumes:
@@ -30,7 +27,10 @@ services:
   loki:
     image: grafana/loki:3.6.6
     restart: unless-stopped
+    command: ["-config.file=/etc/loki/config.yaml"]
+
     volumes:
+      - ./loki/config.yaml:/etc/loki/config.yaml:ro
       - loki-data:/loki
 
     networks:
@@ -57,11 +57,20 @@ services:
   grafana:
     image: grafana/grafana:12.1.0
     restart: unless-stopped
-    # Local only: anyone who reaches port 3000 is admin without login. Remove before exposing.
     environment:
-      GF_AUTH_ANONYMOUS_ENABLED: "true"
-      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
-      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
+      GF_SECURITY_SECRET_KEY__FILE: /run/secrets/grafana_secret_key
+      GF_AUTH_BASIC_PASSWORD_POLICY: "true"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_USERS_ALLOW_ORG_CREATE: "false"
+      GF_SECURITY_DISABLE_GRAVATAR: "true"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      # Set to "true" once Grafana is served over HTTPS; over plain HTTP it breaks login.
+      GF_SECURITY_COOKIE_SECURE: "false"
+
+    secrets:
+      - grafana_admin_password
+      - grafana_secret_key
 
     ports:
       - "127.0.0.1:3000:3000"
@@ -76,6 +85,13 @@ services:
     depends_on:
       - loki
       - prometheus
+
+# On Linux the files must be readable by Grafana's uid 472: chown 472 and chmod 400.
+secrets:
+  grafana_admin_password:
+    file: ./secrets/grafana_admin_password
+  grafana_secret_key:
+    file: ./secrets/grafana_secret_key
 
 volumes:
   otelcol-storage:
