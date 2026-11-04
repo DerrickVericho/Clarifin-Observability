@@ -51,8 +51,28 @@ services:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
 
+    # Must match node-exporter's listen address.
+    extra_hosts:
+      - "docker-host:172.17.0.1"
+
     networks:
       - clarifin
+
+  # Host network and PID namespace so it reports the host, not its own container.
+  node-exporter:
+    image: prom/node-exporter:v1.12.1
+    restart: unless-stopped
+    network_mode: host
+    pid: host
+    command:
+      - --path.rootfs=/host
+      # docker0's address: reachable from containers, not from the public interface.
+      # Change here and in prometheus' extra_hosts if the daemon's `bip` is changed.
+      - --web.listen-address=172.17.0.1:9100
+
+    volumes:
+      # Option: on Linux use `ro,rslave` so mounts added later are seen; Docker Desktop rejects it.
+      - /:/host:ro
 
   grafana:
     image: grafana/grafana:12.1.0
