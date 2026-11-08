@@ -1,6 +1,5 @@
 name: clarifin-observability
 
-# Start the app stack first: it creates the external `clarifin` network.
 services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.146.1
@@ -51,14 +50,12 @@ services:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
 
-    # Must match node-exporter's listen address.
     extra_hosts:
       - "docker-host:172.17.0.1"
 
     networks:
       - clarifin
 
-  # Host network and PID namespace so it reports the host, not its own container.
   node-exporter:
     image: prom/node-exporter:v1.12.1
     restart: unless-stopped
@@ -66,13 +63,29 @@ services:
     pid: host
     command:
       - --path.rootfs=/host
-      # docker0's address: reachable from containers, not from the public interface.
-      # Change here and in prometheus' extra_hosts if the daemon's `bip` is changed.
       - --web.listen-address=172.17.0.1:9100
 
     volumes:
-      # Option: on Linux use `ro,rslave` so mounts added later are seen; Docker Desktop rejects it.
       - /:/host:ro
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.20.1
+    restart: unless-stopped
+    command:
+      - --collector.stat_checkpointer
+      - --collector.long_running_transactions
+      - --collection-timeout=10s
+
+    environment:
+      DATA_SOURCE_URI: db:5432/clarifin?sslmode=disable
+      DATA_SOURCE_USER: postgres_exporter
+      DATA_SOURCE_PASS_FILE: /run/secrets/postgres_exporter_password
+
+    secrets:
+      - postgres_exporter_password
+
+    networks:
+      - clarifin
 
   grafana:
     image: grafana/grafana:12.1.0
@@ -85,7 +98,6 @@ services:
       GF_USERS_ALLOW_ORG_CREATE: "false"
       GF_SECURITY_DISABLE_GRAVATAR: "true"
       GF_ANALYTICS_REPORTING_ENABLED: "false"
-      # Set to "true" once Grafana is served over HTTPS; over plain HTTP it breaks login.
       GF_SECURITY_COOKIE_SECURE: "false"
 
     secrets:
@@ -106,12 +118,13 @@ services:
       - loki
       - prometheus
 
-# On Linux the files must be readable by Grafana's uid 472: chown 472 and chmod 400.
 secrets:
   grafana_admin_password:
     file: ./secrets/grafana_admin_password
   grafana_secret_key:
     file: ./secrets/grafana_secret_key
+  postgres_exporter_password:
+    file: ./secrets/postgres_exporter_password
 
 volumes:
   otelcol-storage:

@@ -18,7 +18,6 @@ common:
       store: inmemory
 
 # Never edit an existing period: data written under it becomes unreadable.
-# To move to object storage, append a period with a future `from` date and `object_store: s3`.
 schema_config:
   configs:
     - from: 2020-10-24
@@ -28,12 +27,6 @@ schema_config:
       index:
         prefix: index_
         period: 24h
-
-# Option: S3-compatible object storage, used only by a schema period that names it.
-# storage_config:
-#   aws:
-#     s3: https://<access_key>:<secret_key>@<endpoint>/<bucket>
-#     s3forcepathstyle: true
 
 ingester:
   wal:
@@ -46,12 +39,12 @@ ingester:
 compactor:
   working_directory: /loki/compactor
   compaction_interval: 10m
-  retention_enabled: true # changed
+  retention_enabled: true
   retention_delete_delay: 2h
-  delete_request_store: filesystem # changed: required when retention is enabled
+  # Required while retention_enabled is true.
+  delete_request_store: filesystem
 
 limits_config:
-  # changed. Time-based only: disk use is roughly ingest per day × this period.
   retention_period: 720h
 
   ingestion_rate_mb: 4
@@ -79,4 +72,4 @@ query_range:
         max_size_mb: 100
 
 analytics:
-  reporting_enabled: false # changed
+  reporting_enabled: false
