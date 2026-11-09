@@ -46,6 +46,7 @@ external `clarifin` network.
 **First run** (Git Bash, from this folder):
 
 ```bash
+cp .env.example .env                            # then adjust for this machine
 mkdir -p secrets
 python -c "import secrets; print(secrets.token_urlsafe(24) + 'Aa1!', end='')" > secrets/grafana_admin_password
 python -c "import secrets; print(secrets.token_urlsafe(48), end='')" > secrets/grafana_secret_key
@@ -57,8 +58,9 @@ Then create the database role postgres-exporter logs in with (once per database;
 [docs/COMPOSE.md](docs/COMPOSE.md#postgres-exporter)), and set
 `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318` in the app's `.env`.
 
-**Access:** Grafana at `http://127.0.0.1:3000` (user `admin`, password from
-`secrets/grafana_admin_password`), Prometheus at `http://127.0.0.1:9090`. On a server,
+**Access:** Grafana at `http://127.0.0.1:3000` (user `GRAFANA_ADMIN_USER`, password from
+`secrets/grafana_admin_password`), Prometheus at `http://127.0.0.1:9090`; the ports come
+from `.env`. On a server,
 reach them through an SSH tunnel: `ssh -L 3000:127.0.0.1:3000 <server>`.
 
 **Everyday commands:**

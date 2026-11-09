@@ -8,7 +8,7 @@ services:
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
 
     ports:
-      - "127.0.0.1:4318:4318"
+      - "127.0.0.1:${OTLP_HTTP_PORT:?}:4318"
 
     volumes:
       - ./otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml:ro
@@ -44,14 +44,14 @@ services:
       - --web.enable-otlp-receiver
 
     ports:
-      - "127.0.0.1:9090:9090"
+      - "127.0.0.1:${PROMETHEUS_PORT:?}:9090"
 
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
 
     extra_hosts:
-      - "docker-host:172.17.0.1"
+      - "docker-host:${DOCKER_HOST_IP:?}"
 
     networks:
       - clarifin
@@ -63,7 +63,7 @@ services:
     pid: host
     command:
       - --path.rootfs=/host
-      - --web.listen-address=172.17.0.1:9100
+      - --web.listen-address=${DOCKER_HOST_IP:?}:9100
 
     volumes:
       - /:/host:ro
@@ -77,8 +77,8 @@ services:
       - --collection-timeout=10s
 
     environment:
-      DATA_SOURCE_URI: db:5432/clarifin?sslmode=disable
-      DATA_SOURCE_USER: postgres_exporter
+      DATA_SOURCE_URI: ${POSTGRES_HOST:?}:${POSTGRES_PORT:?}/${POSTGRES_DB:?}?sslmode=${POSTGRES_SSLMODE:?}
+      DATA_SOURCE_USER: ${POSTGRES_EXPORTER_USER:?}
       DATA_SOURCE_PASS_FILE: /run/secrets/postgres_exporter_password
 
     secrets:
@@ -91,6 +91,7 @@ services:
     image: grafana/grafana:12.1.0
     restart: unless-stopped
     environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:?}
       GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin_password
       GF_SECURITY_SECRET_KEY__FILE: /run/secrets/grafana_secret_key
       GF_AUTH_BASIC_PASSWORD_POLICY: "true"
@@ -98,14 +99,14 @@ services:
       GF_USERS_ALLOW_ORG_CREATE: "false"
       GF_SECURITY_DISABLE_GRAVATAR: "true"
       GF_ANALYTICS_REPORTING_ENABLED: "false"
-      GF_SECURITY_COOKIE_SECURE: "false"
+      GF_SECURITY_COOKIE_SECURE: ${GRAFANA_COOKIE_SECURE:?}
 
     secrets:
       - grafana_admin_password
       - grafana_secret_key
 
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:${GRAFANA_PORT:?}:3000"
 
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro

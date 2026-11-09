@@ -35,8 +35,13 @@ warnings only.
 
 ### Self-telemetry
 
-The Collector serves its own metrics on `:8888`, scraped as `job="otel-collector"`. Useful
-series: `otelcol_exporter_queue_size`, `otelcol_exporter_send_failed_*`.
+The Collector serves its own metrics on `:8888`, scraped as `job="otel-collector"`; `up`
+of that job is its health. Useful series: `otelcol_exporter_queue_size` (data waiting to
+be sent), `otelcol_exporter_send_failed_*`, and `otelcol_receiver_accepted_*` /
+`otelcol_receiver_refused_*` per receiver.
+
+Under Kubernetes, add the `health_check` extension on `0.0.0.0:13133` for the kubelet's
+liveness and readiness probes.
 
 ### Moving off Docker
 

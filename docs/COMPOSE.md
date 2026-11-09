@@ -4,18 +4,43 @@ Notes for each service in `docker-compose.yml`. The file itself carries no comme
 setting that needs explaining or a warning is described here.
 
 All services join the external `clarifin` network, created by the app stack. Only
-Grafana (3000), Prometheus (9090) and the Collector's OTLP port (4318) are published, and
-only on `127.0.0.1`.
+Grafana, Prometheus and the Collector's OTLP port are published, and only on `127.0.0.1`.
+
+## Environment
+
+Values that differ between machines come from `.env` (copied from `.env.example`, and
+gitignored). Every variable is required: a missing one stops `docker compose` instead of
+falling back to a value meant for another machine.
+
+| Variable | Used for |
+|---|---|
+| `GRAFANA_PORT`, `PROMETHEUS_PORT`, `OTLP_HTTP_PORT` | Host ports, on `127.0.0.1` |
+| `DOCKER_HOST_IP` | docker0's address: node-exporter's listen address and Prometheus' `docker-host` |
+| `GRAFANA_ADMIN_USER` | Admin login; read only when `grafana-data` is created |
+| `GRAFANA_COOKIE_SECURE` | `true` once Grafana is served over HTTPS |
+| `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_SSLMODE` | postgres-exporter's connection. The port is the one PostgreSQL listens on at `POSTGRES_HOST` (5432 inside the `db` container), not the port the app stack publishes on the host |
+| `POSTGRES_EXPORTER_USER` | The role postgres-exporter logs in as |
+
+Passwords and keys are not variables: they are files in `secrets/`, mounted as Compose
+secrets. A variable shows up in `docker inspect` and in the environment of every process
+in the container; a secret file does not.
 
 ## otel-collector
 
+- No container healthcheck: the official image is `scratch` with only the Collector
+  binary, so it has no program to run one with, and Docker would not restart an unhealthy
+  container anyway. Its health is `up{job="otel-collector"}` in Prometheus. Option: an
+  image with a static busybox added, plus the `health_check` extension on
+  `127.0.0.1:13133`.
 - `user: "0"`: Docker's log files under `/var/lib/docker/containers` are readable only by
   root.
 - `/var/run/docker.sock` feeds the `docker_stats` receiver. Access to the socket is root
   access to the host, and `:ro` does not limit the API. Option: put a read-only socket
   proxy in front of it, or replace `docker_stats` with cAdvisor.
-- `127.0.0.1:4318` lets an app run on the host (`uv run`) export metrics. Containers use
-  `otel-collector:4318` on the network.
+- The published OTLP port lets an app run on the host (`uv run`) export metrics.
+  Containers use `otel-collector:4318` on the network.
+- Its own metrics are on `:8888`, scraped as `job="otel-collector"` (see
+  [CONFIG.md](CONFIG.md#self-telemetry)).
 - `otelcol-storage` holds the file offsets and the persistent export queues. Losing it
   drops queued data and skips lines written since the last read, because reading then
   restarts at the end of each file.
@@ -30,15 +55,15 @@ only on `127.0.0.1`.
 - `--web.enable-otlp-receiver` accepts the Collector's pushes at `/api/v1/otlp`.
 - Retention is the default 15 days with no size cap. Option: `--storage.tsdb.retention.time`
   and `--storage.tsdb.retention.size`.
-- `extra_hosts: docker-host:172.17.0.1` must match node-exporter's `--web.listen-address`.
+- `extra_hosts` maps `docker-host` to `DOCKER_HOST_IP`, node-exporter's listen address.
 
 ## node-exporter
 
 - `network_mode: host` and `pid: host` make it report the host, not its own container;
   `--path.rootfs=/host` points it at the host root, mounted read-only.
-- `--web.listen-address=172.17.0.1:9100` is docker0's address: reachable from containers,
-  not from the public interface. If the Docker daemon's `bip` changes, change it here and
-  in prometheus' `extra_hosts`.
+- It listens on `DOCKER_HOST_IP:9100`, docker0's address: reachable from containers, not
+  from the public interface. The default is `172.17.0.1`; if the Docker daemon's `bip`
+  differs, set the variable to it (`ip -4 addr show docker0`).
 - A host firewall that drops traffic from Docker bridges to the host (for example `ufw`
   with default deny) must allow port 9100 on docker0.
 - Option: on Linux mount the root as `/:/host:ro,rslave` so mounts added later are seen.
@@ -70,8 +95,8 @@ write the new value to the file, run the same command with
 - `--collection-timeout` stays at or below Prometheus' `scrape_timeout` (10s), so a slow
   database never stacks connections.
 - `DATA_SOURCE_URI` and `DATA_SOURCE_PASS_FILE` become `--datasource.*` flags in v0.22.
-- `sslmode=disable` holds only while the database is on the same Docker network; use
-  `require` once it is on another host.
+- `POSTGRES_SSLMODE=disable` holds only while the database is on the same Docker network;
+  use `require` once it is on another host.
 - Query-level statistics (`pg_stat_statements`) are off: they need the extension in the
   database's `shared_preload_libraries` and a restart.
 
@@ -79,16 +104,16 @@ write the new value to the file, run the same command with
 
 - Login is required: sign-up and org creation are off, and `GF_AUTH_BASIC_PASSWORD_POLICY`
   enforces 12+ characters with upper and lower case, a digit and a symbol.
-- The admin password and `secret_key` come from `secrets/`, and Grafana reads them **only
-  when it creates `grafana-data`**. Afterwards:
+- The admin user (`GRAFANA_ADMIN_USER`), its password and `secret_key` (both from
+  `secrets/`) are read **only when Grafana creates `grafana-data`**. Afterwards:
   - Reset the admin password with
     `docker compose exec -T grafana grafana cli admin reset-admin-password --password-from-stdin < secrets/grafana_admin_password`.
   - Never change `secret_key` on an existing volume: secrets encrypted with the old key
     become unreadable. Back it up together with `grafana-data`.
 - Other users are created by the admin in the UI with the Viewer role; Grafana cannot
   provision users from files. Once more than one person needs access, use SSO.
-- Set `GF_SECURITY_COOKIE_SECURE` to `"true"` once Grafana is served over HTTPS; over plain
-  HTTP it breaks login.
+- Set `GRAFANA_COOKIE_SECURE=true` once Grafana is served over HTTPS; over plain HTTP it
+  breaks login.
 - `/metrics` needs no login, so anything on the `clarifin` network can read it. Option:
   `GF_METRICS_BASIC_AUTH_USERNAME` and `_PASSWORD`, with matching `basic_auth` in the
   Prometheus job.

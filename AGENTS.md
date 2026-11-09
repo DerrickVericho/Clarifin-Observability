@@ -26,7 +26,10 @@ A change to a service or a config value updates its section in the same change.
 
 ## Rules
 
-- Never print or commit anything in `secrets/`.
+- Values that differ between machines (ports, hosts, user names) go in `.env` and
+  `.env.example`, referenced as required `${VAR:?}`. Passwords and keys are files in
+  `secrets/`, never variables.
+- Never print or commit anything in `secrets/` or `.env`.
 - Pin every image to an exact version.
 - Publish ports only on `127.0.0.1`.
 
@@ -35,6 +38,7 @@ A change to a service or a config value updates its section in the same change.
 ```bash
 export MSYS_NO_PATHCONV=1                     # Git Bash only: keeps container paths intact
 docker compose config -q                      # validate the compose file
+docker compose up -d                          # apply changes
 docker compose exec -T prometheus promtool check config /etc/prometheus/prometheus.yml
 docker compose kill -s SIGHUP prometheus      # reload prometheus.yml without a restart
 ```
